@@ -15,6 +15,7 @@ SENHA_ADMIN = "ggape@2026"
 # ==============================================================================
 ARQUIVO_DADOS = "dados_pesquisa.json"
 
+# Lista exata das 24 afirmativas gerais (Escala Likert 1 a 5)
 PERGUNTAS_LIKERT = [
     "1. Tenho clareza sobre os objetivos e metas da organização para os próximos meses.",
     "2. Tenho clareza sobre meus objetivos individuais desse ano.",
@@ -45,11 +46,11 @@ PERGUNTAS_LIKERT = [
 OPCOES_TEMPO_CARREIRA = ["Menos de 1 ano", "2 a 3 anos", "3 a 5 anos", "Mais do que 5 anos"]
 
 def carregar_dados():
-    """Carrega ou inicializa a base de dados da pesquisa."""
+    """Carrega os dados. Inicializa com estrutura suporte a tokens associados a áreas."""
     if not os.path.exists(ARQUIVO_DADOS):
         dados_iniciais = {
             "areas": ["Projetos", "Recursos Humanos", "Financeiro/Administrativo", "Operações", "Comunicação"],
-            "tokens": {},
+            "tokens": {},  # Estrutura: {"TOKEN123": {"usado": False, "area": "Recursos Humanos"}}
             "respostas": []
         }
         salvar_dados(dados_iniciais)
@@ -64,7 +65,7 @@ def salvar_dados(dados):
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
 def exibir_formulario_login(titulo_modulo):
-    """Função reutilizável para renderizar o ecrã de login e autenticação."""
+    """Função para renderizar a caixa de login de Administrador."""
     st.subheader(f"🔐 Acesso Restrito - {titulo_modulo}")
     st.info("Esta secção exige autenticação de Administrador.")
     
@@ -81,11 +82,11 @@ def exibir_formulario_login(titulo_modulo):
             else:
                 st.error("Utilizador ou palavra-passe incorretos.")
 
-# Configuração da página Streamlit
+# Configuração visual do Streamlit
 st.set_page_config(page_title="Pesquisa de Clima - Parceiros da Educação", layout="wide")
 dados = carregar_dados()
 
-# Inicialização do estado de autenticação no Session State
+# Inicialização da sessão de autenticação
 if "admin_autenticado" not in st.session_state:
     st.session_state["admin_autenticado"] = False
 
@@ -96,7 +97,6 @@ opcao_menu = st.sidebar.radio(
     ["1. Responder Pesquisa", "2. Painel Admin", "3. Dashboard de Resultados"]
 )
 
-# Botão de Logout Visível no Menu Lateral se o Admin estiver Autenticado
 if st.session_state["admin_autenticado"]:
     st.sidebar.divider()
     if st.sidebar.button("🔒 Sair do Modo Admin (Logout)"):
@@ -104,7 +104,7 @@ if st.session_state["admin_autenticado"]:
         st.rerun()
 
 # ==============================================================================
-# MÓDULO 1: RESPONDER PESQUISA (Acesso Público com Token)
+# MÓDULO 1: RESPONDER PESQUISA (Com Área Pré-preenchida pelo Token)
 # ==============================================================================
 if opcao_menu == "1. Responder Pesquisa":
     st.title("📋 Pesquisa de Clima - Parceiros da Educação")
@@ -120,15 +120,20 @@ if opcao_menu == "1. Responder Pesquisa":
         elif dados["tokens"][token_limpo]["usado"]:
             st.warning("Este token já foi utilizado para responder à pesquisa.")
         else:
-            st.success("Token validado!")
+            # Identificação automática da Área associada ao Token
+            area_do_token = dados["tokens"][token_limpo].get("area", "Não Especificada")
+            
+            st.success(f"Token validado com sucesso! Área identificada: **{area_do_token}**")
             
             with st.form(key="form_pesquisa_sequencial"):
-                area_selecionada = st.selectbox("Selecione a sua Área Funcional:", dados["areas"])
+                # O campo da área é exibido de forma informativa (fixado pelo token)
+                st.info(f"📍 **Área Funcional atribuída a esta pesquisa:** {area_do_token}")
                 st.divider()
 
                 respostas_likert = []
                 st.caption("Para as questões abaixo: 1 = Discordo Totalmente | 3 = Neutro | 5 = Concordo Totalmente")
                 
+                # Questões 1 a 24 (Escala 1 a 5)
                 for idx, pergunta in enumerate(PERGUNTAS_LIKERT):
                     st.write(f"**{pergunta}**")
                     nota = st.radio(
@@ -142,14 +147,17 @@ if opcao_menu == "1. Responder Pesquisa":
                     respostas_likert.append(nota)
                     st.divider()
 
+                # Questão 25 (eNPS 0 a 10)
                 st.write("**25. Em uma escala de 0 a 10, qual a probabilidade de você recomendar nossa organização como um bom lugar para trabalhar?**")
                 nota_enps = st.slider("Selecione uma nota de 0 a 10:", min_value=0, max_value=10, value=8)
                 st.divider()
 
+                # Questão 26 (Plano de Carreira)
                 st.write('**26. No meu plano de carreira, me vejo trabalhando na Parceiros por:**')
                 tempo_carreira = st.radio("Selecione uma opção:", OPCOES_TEMPO_CARREIRA, index=0)
                 st.divider()
 
+                # Questões 27 a 29 (Campos Abertos)
                 st.write("**27. Para você, quais são as fortalezas de trabalhar ou o que você mais valoriza na Parceiros da Educação? (opcional)**")
                 fortalezas = st.text_area("Fortalezas:", key="f_txt", label_visibility="collapsed")
                 st.divider()
@@ -164,8 +172,9 @@ if opcao_menu == "1. Responder Pesquisa":
                 submeter = st.form_submit_button("Submeter Resposta")
 
                 if submeter:
+                    # Regista a resposta gravando a área associada ao token
                     dados["respostas"].append({
-                        "area": area_selecionada,
+                        "area": area_do_token,
                         "likert": respostas_likert,
                         "enps": nota_enps,
                         "tempo_carreira": tempo_carreira,
@@ -174,6 +183,7 @@ if opcao_menu == "1. Responder Pesquisa":
                         "comentarios_gerais": comentarios_gerais
                     })
                     
+                    # Marca o token como utilizado
                     dados["tokens"][token_limpo]["usado"] = True
                     salvar_dados(dados)
                     
@@ -181,7 +191,7 @@ if opcao_menu == "1. Responder Pesquisa":
                     st.success("Obrigado! A sua resposta foi registada com sucesso.")
 
 # ==============================================================================
-# MÓDULO 2: PAINEL DE ADMINISTRAÇÃO (Acesso Restrito)
+# MÓDULO 2: PAINEL DE ADMINISTRAÇÃO (Gerador de Tokens por Área)
 # ==============================================================================
 elif opcao_menu == "2. Painel Admin":
     st.title("⚙️ Painel de Administração")
@@ -192,7 +202,7 @@ elif opcao_menu == "2. Painel Admin":
         st.success("Sessão ativa como Administrador")
         st.divider()
 
-        tab_areas, tab_tokens = st.tabs(["Gerir Áreas Funcionais", "Gerar Tokens"])
+        tab_areas, tab_tokens = st.tabs(["Gerir Áreas Funcionais", "Gerar Tokens por Área"])
 
         with tab_areas:
             st.subheader("Gerir Áreas Funcionais")
@@ -203,15 +213,48 @@ elif opcao_menu == "2. Painel Admin":
                 st.success("Áreas atualizadas com sucesso!")
 
         with tab_tokens:
-            st.subheader("Gerador de Tokens de Acesso")
-            qtd = st.number_input("Quantidade de tokens a gerar:", min_value=1, max_value=500, value=15)
-            if st.button("Gerar Tokens"):
-                novos = [str(uuid.uuid4())[:8].upper() for _ in range(qtd)]
-                for t in novos:
-                    dados["tokens"][t] = {"usado": False}
+            st.subheader("Gerador de Tokens Únicos por Área Funcional")
+            
+            # Seleção de Área para a qual os tokens serão gerados
+            area_token_alvo = st.selectbox("Selecione a Área Funcional para estes tokens:", dados["areas"])
+            qtd = st.number_input("Quantidade de tokens a gerar:", min_value=1, max_value=500, value=10)
+
+            if st.button("Gerar Tokens para esta Área"):
+                novos = []
+                for _ in range(qtd):
+                    code = str(uuid.uuid4())[:8].upper()
+                    # Guarda o token associando-o diretamente à área selecionada
+                    dados["tokens"][code] = {
+                        "usado": False,
+                        "area": area_token_alvo
+                    }
+                    novos.append(code)
+                
                 salvar_dados(dados)
-                st.success(f"{qtd} tokens gerados!")
+                st.success(f"{qtd} tokens gerados com sucesso para a área **{area_token_alvo}**!")
+                
+                # Exibição dos tokens gerados em caixa de código de fácil cópia
+                st.write(f"**Tokens gerados para a área {area_token_alvo}:**")
                 st.code("\n".join(novos))
+
+            # Exibição do histórico/estado atual dos tokens
+            if dados["tokens"]:
+                st.divider()
+                st.subheader("Estado Atual dos Tokens Registados")
+                
+                # Construção de tabela resumo com os tokens, áreas e estados
+                lista_tokens_df = []
+                for t_code, info in dados["tokens"].items():
+                    # Suporte para retrocompatibilidade com tokens antigos
+                    area_nome = info.get("area", "Sem Área Especificada") if isinstance(info, dict) else "Sem Área"
+                    usado_status = "Sim" if (isinstance(info, dict) and info.get("usado")) else "Não"
+                    lista_tokens_df.append({
+                        "Token": t_code,
+                        "Área Atribuída": area_nome,
+                        "Já Utilizado": usado_status
+                    })
+                
+                st.dataframe(pd.DataFrame(lista_tokens_df), use_container_width=True)
 
 # ==============================================================================
 # MÓDULO 3: DASHBOARD DE RESULTADOS (Acesso Restrito)
@@ -228,6 +271,7 @@ elif opcao_menu == "3. Dashboard de Resultados":
             df_bruto = pd.DataFrame(dados["respostas"])
             st.metric("Total de Respostas Submetidas", len(df_bruto))
 
+            # Regra de Privacidade: Áreas com menos de 5 respostas são agrupadas
             contagem_area = df_bruto["area"].value_counts()
             areas_protegidas = contagem_area[contagem_area < 5].index.tolist()
 
