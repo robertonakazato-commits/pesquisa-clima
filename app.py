@@ -8,7 +8,7 @@ import pandas as pd
 # CONFIGURAÇÃO DE CREDENCIAIS DE ADMINISTRADOR
 # ==============================================================================
 USUARIO_ADMIN = "admin"
-SENHA_ADMIN = "parceiros2026"
+SENHA_ADMIN = "ggape@2026"
 
 # ==============================================================================
 # GESTÃO DE DADOS (PERSISTÊNCIA EM JSON)
