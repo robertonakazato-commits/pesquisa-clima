@@ -15,7 +15,7 @@ SENHA_ADMIN = "ggape@2026"
 # ==============================================================================
 ARQUIVO_DADOS = "dados_pesquisa.json"
 
-# Lista exata das 24 afirmativas gerais (Escala Likert 1 a 5)
+# Lista das 24 afirmativas gerais (Escala Likert 1 a 5)
 PERGUNTAS_LIKERT = [
     "1. Tenho clareza sobre os objetivos e metas da organização para os próximos meses.",
     "2. Tenho clareza sobre meus objetivos individuais desse ano.",
@@ -46,11 +46,11 @@ PERGUNTAS_LIKERT = [
 OPCOES_TEMPO_CARREIRA = ["Menos de 1 ano", "2 a 3 anos", "3 a 5 anos", "Mais do que 5 anos"]
 
 def carregar_dados():
-    """Carrega os dados. Inicializa com estrutura suporte a tokens associados a áreas."""
+    """Carrega os dados a partir do ficheiro JSON local."""
     if not os.path.exists(ARQUIVO_DADOS):
         dados_iniciais = {
             "areas": ["Projetos", "Recursos Humanos", "Financeiro/Administrativo", "Operações", "Comunicação"],
-            "tokens": {},  # Estrutura: {"TOKEN123": {"usado": False, "area": "Recursos Humanos"}}
+            "tokens": {},
             "respostas": []
         }
         salvar_dados(dados_iniciais)
@@ -65,7 +65,7 @@ def salvar_dados(dados):
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
 def exibir_formulario_login(titulo_modulo):
-    """Função para renderizar a caixa de login de Administrador."""
+    """Renderiza a caixa de login para áreas restritas."""
     st.subheader(f"🔐 Acesso Restrito - {titulo_modulo}")
     st.info("Esta secção exige autenticação de Administrador.")
     
@@ -82,11 +82,11 @@ def exibir_formulario_login(titulo_modulo):
             else:
                 st.error("Utilizador ou palavra-passe incorretos.")
 
-# Configuração visual do Streamlit
+# Configuração da página Streamlit
 st.set_page_config(page_title="Pesquisa de Clima - Parceiros da Educação", layout="wide")
 dados = carregar_dados()
 
-# Inicialização da sessão de autenticação
+# Session State de Autenticação
 if "admin_autenticado" not in st.session_state:
     st.session_state["admin_autenticado"] = False
 
@@ -104,7 +104,7 @@ if st.session_state["admin_autenticado"]:
         st.rerun()
 
 # ==============================================================================
-# MÓDULO 1: RESPONDER PESQUISA (Com Área Pré-preenchida pelo Token)
+# MÓDULO 1: RESPONDER PESQUISA
 # ==============================================================================
 if opcao_menu == "1. Responder Pesquisa":
     st.title("📋 Pesquisa de Clima - Parceiros da Educação")
@@ -120,20 +120,16 @@ if opcao_menu == "1. Responder Pesquisa":
         elif dados["tokens"][token_limpo]["usado"]:
             st.warning("Este token já foi utilizado para responder à pesquisa.")
         else:
-            # Identificação automática da Área associada ao Token
             area_do_token = dados["tokens"][token_limpo].get("area", "Não Especificada")
-            
             st.success(f"Token validado com sucesso! Área identificada: **{area_do_token}**")
             
             with st.form(key="form_pesquisa_sequencial"):
-                # O campo da área é exibido de forma informativa (fixado pelo token)
                 st.info(f"📍 **Área Funcional atribuída a esta pesquisa:** {area_do_token}")
                 st.divider()
 
                 respostas_likert = []
                 st.caption("Para as questões abaixo: 1 = Discordo Totalmente | 3 = Neutro | 5 = Concordo Totalmente")
                 
-                # Questões 1 a 24 (Escala 1 a 5)
                 for idx, pergunta in enumerate(PERGUNTAS_LIKERT):
                     st.write(f"**{pergunta}**")
                     nota = st.radio(
@@ -147,17 +143,14 @@ if opcao_menu == "1. Responder Pesquisa":
                     respostas_likert.append(nota)
                     st.divider()
 
-                # Questão 25 (eNPS 0 a 10)
                 st.write("**25. Em uma escala de 0 a 10, qual a probabilidade de você recomendar nossa organização como um bom lugar para trabalhar?**")
                 nota_enps = st.slider("Selecione uma nota de 0 a 10:", min_value=0, max_value=10, value=8)
                 st.divider()
 
-                # Questão 26 (Plano de Carreira)
                 st.write('**26. No meu plano de carreira, me vejo trabalhando na Parceiros por:**')
                 tempo_carreira = st.radio("Selecione uma opção:", OPCOES_TEMPO_CARREIRA, index=0)
                 st.divider()
 
-                # Questões 27 a 29 (Campos Abertos)
                 st.write("**27. Para você, quais são as fortalezas de trabalhar ou o que você mais valoriza na Parceiros da Educação? (opcional)**")
                 fortalezas = st.text_area("Fortalezas:", key="f_txt", label_visibility="collapsed")
                 st.divider()
@@ -172,7 +165,6 @@ if opcao_menu == "1. Responder Pesquisa":
                 submeter = st.form_submit_button("Submeter Resposta")
 
                 if submeter:
-                    # Regista a resposta gravando a área associada ao token
                     dados["respostas"].append({
                         "area": area_do_token,
                         "likert": respostas_likert,
@@ -183,7 +175,6 @@ if opcao_menu == "1. Responder Pesquisa":
                         "comentarios_gerais": comentarios_gerais
                     })
                     
-                    # Marca o token como utilizado
                     dados["tokens"][token_limpo]["usado"] = True
                     salvar_dados(dados)
                     
@@ -191,7 +182,7 @@ if opcao_menu == "1. Responder Pesquisa":
                     st.success("Obrigado! A sua resposta foi registada com sucesso.")
 
 # ==============================================================================
-# MÓDULO 2: PAINEL DE ADMINISTRAÇÃO (Gerador de Tokens por Área)
+# MÓDULO 2: PAINEL ADMIN (Com Gerador e Remoção de Tokens)
 # ==============================================================================
 elif opcao_menu == "2. Painel Admin":
     st.title("⚙️ Painel de Administração")
@@ -202,7 +193,7 @@ elif opcao_menu == "2. Painel Admin":
         st.success("Sessão ativa como Administrador")
         st.divider()
 
-        tab_areas, tab_tokens = st.tabs(["Gerir Áreas Funcionais", "Gerar Tokens por Área"])
+        tab_areas, tab_tokens = st.tabs(["Gerir Áreas Funcionais", "Gerar e Gerir Tokens"])
 
         with tab_areas:
             st.subheader("Gerir Áreas Funcionais")
@@ -213,9 +204,8 @@ elif opcao_menu == "2. Painel Admin":
                 st.success("Áreas atualizadas com sucesso!")
 
         with tab_tokens:
-            st.subheader("Gerador de Tokens Únicos por Área Funcional")
+            st.subheader("1. Gerar Novos Tokens por Área")
             
-            # Seleção de Área para a qual os tokens serão gerados
             area_token_alvo = st.selectbox("Selecione a Área Funcional para estes tokens:", dados["areas"])
             qtd = st.number_input("Quantidade de tokens a gerar:", min_value=1, max_value=500, value=10)
 
@@ -223,7 +213,6 @@ elif opcao_menu == "2. Painel Admin":
                 novos = []
                 for _ in range(qtd):
                     code = str(uuid.uuid4())[:8].upper()
-                    # Guarda o token associando-o diretamente à área selecionada
                     dados["tokens"][code] = {
                         "usado": False,
                         "area": area_token_alvo
@@ -231,33 +220,60 @@ elif opcao_menu == "2. Painel Admin":
                     novos.append(code)
                 
                 salvar_dados(dados)
-                st.success(f"{qtd} tokens gerados com sucesso para a área **{area_token_alvo}**!")
-                
-                # Exibição dos tokens gerados em caixa de código de fácil cópia
-                st.write(f"**Tokens gerados para a área {area_token_alvo}:**")
+                st.success(f"{qtd} tokens gerados para a área **{area_token_alvo}**!")
                 st.code("\n".join(novos))
 
-            # Exibição do histórico/estado atual dos tokens
+            # ------------------------------------------------------------------
+            # NOVA FUNCIONALIDADE: VISUALIZAR, SELECCIONAR E APAGAR TOKENS
+            # ------------------------------------------------------------------
             if dados["tokens"]:
                 st.divider()
-                st.subheader("Estado Atual dos Tokens Registados")
-                
-                # Construção de tabela resumo com os tokens, áreas e estados
-                lista_tokens_df = []
+                st.subheader("2. Apagar / Gerir Tokens Registados")
+
+                # Constrói a lista de tokens formatada para exibição no menu de seleção
+                opcoes_tokens = []
                 for t_code, info in dados["tokens"].items():
-                    # Suporte para retrocompatibilidade com tokens antigos
-                    area_nome = info.get("area", "Sem Área Especificada") if isinstance(info, dict) else "Sem Área"
+                    area_nome = info.get("area", "Sem Área") if isinstance(info, dict) else "Sem Área"
+                    usado_status = "USADO" if (isinstance(info, dict) and info.get("usado")) else "LIVRE"
+                    opcoes_tokens.append(f"{t_code} | Área: {area_nome} | Status: {usado_status}")
+
+                # Menu de seleção múltipla de tokens
+                tokens_para_remover = st.multiselect(
+                    "Selecione os tokens que pretende APAGAR:",
+                    options=opcoes_tokens
+                )
+
+                if st.button("🗑️ Apagar Tokens Selecionados"):
+                    if not tokens_para_remover:
+                        st.warning("Por favor, selecione pelo menos um token para apagar.")
+                    else:
+                        # Extrai apenas o código do token (antes do primeiro símbolo |)
+                        qtd_removidos = 0
+                        for item in tokens_para_remover:
+                            code_extraido = item.split(" | ")[0].strip()
+                            if code_extraido in dados["tokens"]:
+                                del dados["tokens"][code_extraido]
+                                qtd_removidos += 1
+
+                        salvar_dados(dados)
+                        st.success(f"{qtd_removidos} token(s) removido(s) com sucesso!")
+                        st.rerun() # Recarrega a página para atualizar a lista imediatamente
+
+                # Tabela Resumo do Estado Atual dos Tokens
+                st.write("**Tabela Geral de Tokens:**")
+                lista_df = []
+                for t_code, info in dados["tokens"].items():
+                    area_nome = info.get("area", "Sem Área") if isinstance(info, dict) else "Sem Área"
                     usado_status = "Sim" if (isinstance(info, dict) and info.get("usado")) else "Não"
-                    lista_tokens_df.append({
+                    lista_df.append({
                         "Token": t_code,
                         "Área Atribuída": area_nome,
                         "Já Utilizado": usado_status
                     })
-                
-                st.dataframe(pd.DataFrame(lista_tokens_df), use_container_width=True)
+                st.dataframe(pd.DataFrame(lista_df), use_container_width=True)
 
 # ==============================================================================
-# MÓDULO 3: DASHBOARD DE RESULTADOS (Acesso Restrito)
+# MÓDULO 3: DASHBOARD DE RESULTADOS
 # ==============================================================================
 elif opcao_menu == "3. Dashboard de Resultados":
     st.title("📊 Dashboard - Parceiros da Educação")
@@ -271,7 +287,6 @@ elif opcao_menu == "3. Dashboard de Resultados":
             df_bruto = pd.DataFrame(dados["respostas"])
             st.metric("Total de Respostas Submetidas", len(df_bruto))
 
-            # Regra de Privacidade: Áreas com menos de 5 respostas são agrupadas
             contagem_area = df_bruto["area"].value_counts()
             areas_protegidas = contagem_area[contagem_area < 5].index.tolist()
 
