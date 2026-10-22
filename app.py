@@ -5,11 +5,16 @@ import uuid
 import pandas as pd
 
 # ==============================================================================
-# DOCUMENTAÇÃO: ESTRUTURA E PERSISTÊNCIA DE DADOS
+# CONFIGURAÇÃO DE CREDENCIAIS DE ADMINISTRADOR
+# ==============================================================================
+USUARIO_ADMIN = "admin"
+SENHA_ADMIN = "parceiros2026"
+
+# ==============================================================================
+# GESTÃO DE DADOS (PERSISTÊNCIA EM JSON)
 # ==============================================================================
 ARQUIVO_DADOS = "dados_pesquisa.json"
 
-# Lista exata das 24 primeiras afirmativas (Escala Likert 1 a 5) na ordem original
 PERGUNTAS_LIKERT = [
     "1. Tenho clareza sobre os objetivos e metas da organização para os próximos meses.",
     "2. Tenho clareza sobre meus objetivos individuais desse ano.",
@@ -58,9 +63,13 @@ def salvar_dados(dados):
     with open(ARQUIVO_DADOS, "w", encoding="utf-8") as f:
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
-# Configuração da Página Streamlit
+# Configuração da página Streamlit
 st.set_page_config(page_title="Pesquisa de Clima - Parceiros da Educação", layout="wide")
 dados = carregar_dados()
+
+# Inicialização da variável de estado de autenticação no Session State
+if "admin_autenticado" not in st.session_state:
+    st.session_state["admin_autenticado"] = False
 
 # Menu Lateral de Navegação
 st.sidebar.title("Navegação")
@@ -70,7 +79,7 @@ opcao_menu = st.sidebar.radio(
 )
 
 # ==============================================================================
-# MÓDULO 1: RESPONDER PESQUISA (Ordem Sequencial Exata)
+# MÓDULO 1: RESPONDER PESQUISA (Acesso Público com Token)
 # ==============================================================================
 if opcao_menu == "1. Responder Pesquisa":
     st.title("📋 Pesquisa de Clima - Parceiros da Educação")
@@ -92,7 +101,6 @@ if opcao_menu == "1. Responder Pesquisa":
                 area_selecionada = st.selectbox("Selecione a sua Área Funcional:", dados["areas"])
                 st.divider()
 
-                # QUESTÕES 1 A 24 (Likert 1 a 5)
                 respostas_likert = []
                 st.caption("Para as questões abaixo: 1 = Discordo Totalmente | 3 = Neutro | 5 = Concordo Totalmente")
                 
@@ -109,17 +117,14 @@ if opcao_menu == "1. Responder Pesquisa":
                     respostas_likert.append(nota)
                     st.divider()
 
-                # QUESTÃO 25 (eNPS 0 a 10)
                 st.write("**25. Em uma escala de 0 a 10, qual a probabilidade de você recomendar nossa organização como um bom lugar para trabalhar?**")
                 nota_enps = st.slider("Selecione uma nota de 0 a 10:", min_value=0, max_value=10, value=8)
                 st.divider()
 
-                # QUESTÃO 26 (Plano de Carreira)
                 st.write('**26. No meu plano de carreira, me vejo trabalhando na Parceiros por:**')
                 tempo_carreira = st.radio("Selecione uma opção:", OPCOES_TEMPO_CARREIRA, index=0)
                 st.divider()
 
-                # QUESTÕES 27 A 29 (Campos Abertos)
                 st.write("**27. Para você, quais são as fortalezas de trabalhar ou o que você mais valoriza na Parceiros da Educação? (opcional)**")
                 fortalezas = st.text_area("Fortalezas:", key="f_txt", label_visibility="collapsed")
                 st.divider()
@@ -151,34 +156,61 @@ if opcao_menu == "1. Responder Pesquisa":
                     st.success("Obrigado! A sua resposta foi registada com sucesso.")
 
 # ==============================================================================
-# MÓDULO 2: PAINEL DE ADMINISTRAÇÃO
+# MÓDULO 2: PAINEL DE ADMINISTRAÇÃO (Protegido por Login)
 # ==============================================================================
 elif opcao_menu == "2. Painel Admin":
     st.title("⚙️ Painel de Administração")
 
-    tab_areas, tab_tokens = st.tabs(["Gerir Áreas Funcionais", "Gerar Tokens"])
+    # VERIFICAÇÃO DE LOGIN
+    if not st.session_state["admin_autenticado"]:
+        st.subheader("🔐 Acesso Restrito - Autenticação de Administrador")
+        
+        with st.form(key="form_login"):
+            usuario_input = st.text_input("Utilizador:")
+            senha_input = st.text_input("Palavra-passe:", type="password")
+            btn_login = st.form_submit_button("Entrar no Painel")
 
-    with tab_areas:
-        st.subheader("Gerir Áreas Funcionais")
-        novas_areas_txt = st.text_area("Insira uma área por linha:", value="\n".join(dados["areas"]), height=150)
-        if st.button("Guardar Áreas"):
-            dados["areas"] = [a.strip() for a in novas_areas_txt.split("\n") if a.strip()]
-            salvar_dados(dados)
-            st.success("Áreas atualizadas!")
+            if btn_login:
+                if usuario_input == USUARIO_ADMIN and senha_input == SENHA_ADMIN:
+                    st.session_state["admin_autenticado"] = True
+                    st.success("Autenticação efetuada com sucesso!")
+                    st.rerun() # Recarrega a página para exibir o painel completo
+                else:
+                    st.error("Utilizador ou palavra-passe incorretos.")
+    else:
+        # BARRINHA DE SESSÃO ATIVA E BOTÃO DE LOGOUT
+        col_boas_vindas, col_logout = st.columns([4, 1])
+        col_boas_vindas.success("Sessão ativa como Administrador")
+        if col_logout.button("Sair (Logout)"):
+            st.session_state["admin_autenticado"] = False
+            st.rerun()
 
-    with tab_tokens:
-        st.subheader("Gerador de Tokens de Acesso")
-        qtd = st.number_input("Quantidade de tokens a gerar:", min_value=1, max_value=500, value=15)
-        if st.button("Gerar Tokens"):
-            novos = [str(uuid.uuid4())[:8].upper() for _ in range(qtd)]
-            for t in novos:
-                dados["tokens"][t] = {"usado": False}
-            salvar_dados(dados)
-            st.success(f"{qtd} tokens gerados!")
-            st.code("\n".join(novos))
+        st.divider()
+
+        # CONTEÚDO PROTEGIDO DO PAINEL ADMIN
+        tab_areas, tab_tokens = st.tabs(["Gerir Áreas Funcionais", "Gerar Tokens"])
+
+        with tab_areas:
+            st.subheader("Gerir Áreas Funcionais")
+            novas_areas_txt = st.text_area("Insira uma área por linha:", value="\n".join(dados["areas"]), height=150)
+            if st.button("Guardar Áreas"):
+                dados["areas"] = [a.strip() for a in novas_areas_txt.split("\n") if a.strip()]
+                salvar_dados(dados)
+                st.success("Áreas atualizadas com sucesso!")
+
+        with tab_tokens:
+            st.subheader("Gerador de Tokens de Acesso")
+            qtd = st.number_input("Quantidade de tokens a gerar:", min_value=1, max_value=500, value=15)
+            if st.button("Gerar Tokens"):
+                novos = [str(uuid.uuid4())[:8].upper() for _ in range(qtd)]
+                for t in novos:
+                    dados["tokens"][t] = {"usado": False}
+                salvar_dados(dados)
+                st.success(f"{qtd} tokens gerados!")
+                st.code("\n".join(novos))
 
 # ==============================================================================
-# MÓDULO 3: DASHBOARD DE RESULTADOS COMPLETO
+# MÓDULO 3: DASHBOARD DE RESULTADOS
 # ==============================================================================
 elif opcao_menu == "3. Dashboard de Resultados":
     st.title("📊 Dashboard - Parceiros da Educação")
@@ -189,7 +221,6 @@ elif opcao_menu == "3. Dashboard de Resultados":
         df_bruto = pd.DataFrame(dados["respostas"])
         st.metric("Total de Respostas Submetidas", len(df_bruto))
 
-        # Regra do Limiar < 5 respostas por área
         contagem_area = df_bruto["area"].value_counts()
         areas_protegidas = contagem_area[contagem_area < 5].index.tolist()
 
@@ -201,7 +232,6 @@ elif opcao_menu == "3. Dashboard de Resultados":
         st.caption("Nota: Áreas com menos de 5 respostas são agrupadas automaticamente.")
         st.bar_chart(df_bruto["area_exibicao"].value_counts())
 
-        # Filtro de Área
         areas_lista = ["Todas as Áreas"] + list(df_bruto["area_exibicao"].unique())
         filtro_area = st.selectbox("Filtrar Dashboard por Área:", areas_lista)
         
@@ -209,7 +239,6 @@ elif opcao_menu == "3. Dashboard de Resultados":
 
         st.divider()
 
-        # 1. TABELA DE FAVORABILIDADE (Questões 1 a 24)
         st.subheader("Favorabilidade (Questões 1 a 24)")
         res_likert = []
         for idx, pergunta in enumerate(PERGUNTAS_LIKERT):
@@ -229,7 +258,6 @@ elif opcao_menu == "3. Dashboard de Resultados":
 
         st.divider()
 
-        # 2. eNPS (Questão 25)
         st.subheader("eNPS - Recomendação (Questão 25)")
         notas_enps = df_filtrado["enps"].tolist()
         if notas_enps:
@@ -245,13 +273,11 @@ elif opcao_menu == "3. Dashboard de Resultados":
 
         st.divider()
 
-        # 3. PLANO DE CARREIRA (Questão 26)
         st.subheader("Plano de Carreira (Questão 26)")
         st.bar_chart(df_filtrado["tempo_carreira"].value_counts())
 
         st.divider()
 
-        # 4. COMPONENTES QUALITATIVOS (Questões 27 a 29)
         st.subheader("Análise Qualitativa (Questões 27 a 29)")
         tab_f, tab_m, tab_c = st.tabs(["27. Fortalezas", "28. Oportunidades de Melhoria", "29. Comentários Gerais"])
         
