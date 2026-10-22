@@ -5,7 +5,7 @@ import uuid
 import pandas as pd
 
 # ==============================================================================
-# CONFIGURAÇÃO DE CREDENCIAIS DE ADMINISTRADOR
+# CONFIGURAÇÃO DE CREDENCIAIS PROTEGIDAS
 # ==============================================================================
 USUARIO_ADMIN = "admin"
 SENHA_ADMIN = "ggape@2026"
@@ -63,11 +63,29 @@ def salvar_dados(dados):
     with open(ARQUIVO_DADOS, "w", encoding="utf-8") as f:
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
+def exibir_formulario_login(titulo_modulo):
+    """Função reutilizável para renderizar o ecrã de login e autenticação."""
+    st.subheader(f"🔐 Acesso Restrito - {titulo_modulo}")
+    st.info("Esta secção exige autenticação de Administrador.")
+    
+    with st.form(key=f"form_login_{titulo_modulo}"):
+        usuario_input = st.text_input("Utilizador:")
+        senha_input = st.text_input("Palavra-passe:", type="password")
+        btn_login = st.form_submit_button("Entrar")
+
+        if btn_login:
+            if usuario_input == USUARIO_ADMIN and senha_input == SENHA_ADMIN:
+                st.session_state["admin_autenticado"] = True
+                st.success("Autenticação efetuada com sucesso!")
+                st.rerun()
+            else:
+                st.error("Utilizador ou palavra-passe incorretos.")
+
 # Configuração da página Streamlit
 st.set_page_config(page_title="Pesquisa de Clima - Parceiros da Educação", layout="wide")
 dados = carregar_dados()
 
-# Inicialização da variável de estado de autenticação no Session State
+# Inicialização do estado de autenticação no Session State
 if "admin_autenticado" not in st.session_state:
     st.session_state["admin_autenticado"] = False
 
@@ -77,6 +95,13 @@ opcao_menu = st.sidebar.radio(
     "Escolha o Módulo:",
     ["1. Responder Pesquisa", "2. Painel Admin", "3. Dashboard de Resultados"]
 )
+
+# Botão de Logout Visível no Menu Lateral se o Admin estiver Autenticado
+if st.session_state["admin_autenticado"]:
+    st.sidebar.divider()
+    if st.sidebar.button("🔒 Sair do Modo Admin (Logout)"):
+        st.session_state["admin_autenticado"] = False
+        st.rerun()
 
 # ==============================================================================
 # MÓDULO 1: RESPONDER PESQUISA (Acesso Público com Token)
@@ -156,38 +181,17 @@ if opcao_menu == "1. Responder Pesquisa":
                     st.success("Obrigado! A sua resposta foi registada com sucesso.")
 
 # ==============================================================================
-# MÓDULO 2: PAINEL DE ADMINISTRAÇÃO (Protegido por Login)
+# MÓDULO 2: PAINEL DE ADMINISTRAÇÃO (Acesso Restrito)
 # ==============================================================================
 elif opcao_menu == "2. Painel Admin":
     st.title("⚙️ Painel de Administração")
 
-    # VERIFICAÇÃO DE LOGIN
     if not st.session_state["admin_autenticado"]:
-        st.subheader("🔐 Acesso Restrito - Autenticação de Administrador")
-        
-        with st.form(key="form_login"):
-            usuario_input = st.text_input("Utilizador:")
-            senha_input = st.text_input("Palavra-passe:", type="password")
-            btn_login = st.form_submit_button("Entrar no Painel")
-
-            if btn_login:
-                if usuario_input == USUARIO_ADMIN and senha_input == SENHA_ADMIN:
-                    st.session_state["admin_autenticado"] = True
-                    st.success("Autenticação efetuada com sucesso!")
-                    st.rerun() # Recarrega a página para exibir o painel completo
-                else:
-                    st.error("Utilizador ou palavra-passe incorretos.")
+        exibir_formulario_login("Painel Admin")
     else:
-        # BARRINHA DE SESSÃO ATIVA E BOTÃO DE LOGOUT
-        col_boas_vindas, col_logout = st.columns([4, 1])
-        col_boas_vindas.success("Sessão ativa como Administrador")
-        if col_logout.button("Sair (Logout)"):
-            st.session_state["admin_autenticado"] = False
-            st.rerun()
-
+        st.success("Sessão ativa como Administrador")
         st.divider()
 
-        # CONTEÚDO PROTEGIDO DO PAINEL ADMIN
         tab_areas, tab_tokens = st.tabs(["Gerir Áreas Funcionais", "Gerar Tokens"])
 
         with tab_areas:
@@ -210,88 +214,91 @@ elif opcao_menu == "2. Painel Admin":
                 st.code("\n".join(novos))
 
 # ==============================================================================
-# MÓDULO 3: DASHBOARD DE RESULTADOS
+# MÓDULO 3: DASHBOARD DE RESULTADOS (Acesso Restrito)
 # ==============================================================================
 elif opcao_menu == "3. Dashboard de Resultados":
     st.title("📊 Dashboard - Parceiros da Educação")
 
-    if not dados["respostas"]:
-        st.info("Ainda não existem respostas registadas para análise.")
+    if not st.session_state["admin_autenticado"]:
+        exibir_formulario_login("Dashboard de Resultados")
     else:
-        df_bruto = pd.DataFrame(dados["respostas"])
-        st.metric("Total de Respostas Submetidas", len(df_bruto))
+        if not dados["respostas"]:
+            st.info("Ainda não existem respostas registadas para análise.")
+        else:
+            df_bruto = pd.DataFrame(dados["respostas"])
+            st.metric("Total de Respostas Submetidas", len(df_bruto))
 
-        contagem_area = df_bruto["area"].value_counts()
-        areas_protegidas = contagem_area[contagem_area < 5].index.tolist()
+            contagem_area = df_bruto["area"].value_counts()
+            areas_protegidas = contagem_area[contagem_area < 5].index.tolist()
 
-        df_bruto["area_exibicao"] = df_bruto["area"].apply(
-            lambda a: "Outras Áreas (Agrupadas por Privacidade)" if a in areas_protegidas else a
-        )
+            df_bruto["area_exibicao"] = df_bruto["area"].apply(
+                lambda a: "Outras Áreas (Agrupadas por Privacidade)" if a in areas_protegidas else a
+            )
 
-        st.subheader("Distribuição de Respostas por Área")
-        st.caption("Nota: Áreas com menos de 5 respostas são agrupadas automaticamente.")
-        st.bar_chart(df_bruto["area_exibicao"].value_counts())
+            st.subheader("Distribuição de Respostas por Área")
+            st.caption("Nota: Áreas com menos de 5 respostas são agrupadas automaticamente.")
+            st.bar_chart(df_bruto["area_exibicao"].value_counts())
 
-        areas_lista = ["Todas as Áreas"] + list(df_bruto["area_exibicao"].unique())
-        filtro_area = st.selectbox("Filtrar Dashboard por Área:", areas_lista)
-        
-        df_filtrado = df_bruto if filtro_area == "Todas as Áreas" else df_bruto[df_bruto["area_exibicao"] == filtro_area]
-
-        st.divider()
-
-        st.subheader("Favorabilidade (Questões 1 a 24)")
-        res_likert = []
-        for idx, pergunta in enumerate(PERGUNTAS_LIKERT):
-            notas = [r[idx] for r in df_filtrado["likert"] if idx < len(r)]
-            if notas:
-                tot = len(notas)
-                fav = sum(1 for n in notas if n >= 4)
-                res_likert.append({
-                    "Pergunta": pergunta,
-                    "% Favorável": f"{round((fav/tot)*100, 1)}%",
-                    "Favoráveis (4-5)": fav,
-                    "Neutros (3)": sum(1 for n in notas if n == 3),
-                    "Desfavoráveis (1-2)": sum(1 for n in notas if n <= 2),
-                    "Total": tot
-                })
-        st.dataframe(pd.DataFrame(res_likert), use_container_width=True)
-
-        st.divider()
-
-        st.subheader("eNPS - Recomendação (Questão 25)")
-        notas_enps = df_filtrado["enps"].tolist()
-        if notas_enps:
-            tot_enps = len(notas_enps)
-            promotores = sum(1 for n in notas_enps if n >= 9)
-            detretores = sum(1 for n in notas_enps if n <= 6)
-            enps_score = round(((promotores - detretores) / tot_enps) * 100, 1)
+            areas_lista = ["Todas as Áreas"] + list(df_bruto["area_exibicao"].unique())
+            filtro_area = st.selectbox("Filtrar Dashboard por Área:", areas_lista)
             
-            c1, c2, c3 = st.columns(3)
-            c1.metric("eNPS Score", f"{enps_score}")
-            c2.metric("Promotores (9-10)", f"{promotores} ({round(promotores/tot_enps*100)}%)")
-            c3.metric("Detretores (0-6)", f"{detretores} ({round(detretores/tot_enps*100)}%)")
+            df_filtrado = df_bruto if filtro_area == "Todas as Áreas" else df_bruto[df_bruto["area_exibicao"] == filtro_area]
 
-        st.divider()
+            st.divider()
 
-        st.subheader("Plano de Carreira (Questão 26)")
-        st.bar_chart(df_filtrado["tempo_carreira"].value_counts())
+            st.subheader("Favorabilidade (Questões 1 a 24)")
+            res_likert = []
+            for idx, pergunta in enumerate(PERGUNTAS_LIKERT):
+                notas = [r[idx] for r in df_filtrado["likert"] if idx < len(r)]
+                if notas:
+                    tot = len(notas)
+                    fav = sum(1 for n in notas if n >= 4)
+                    res_likert.append({
+                        "Pergunta": pergunta,
+                        "% Favorável": f"{round((fav/tot)*100, 1)}%",
+                        "Favoráveis (4-5)": fav,
+                        "Neutros (3)": sum(1 for n in notas if n == 3),
+                        "Desfavoráveis (1-2)": sum(1 for n in notas if n <= 2),
+                        "Total": tot
+                    })
+            st.dataframe(pd.DataFrame(res_likert), use_container_width=True)
 
-        st.divider()
+            st.divider()
 
-        st.subheader("Análise Qualitativa (Questões 27 a 29)")
-        tab_f, tab_m, tab_c = st.tabs(["27. Fortalezas", "28. Oportunidades de Melhoria", "29. Comentários Gerais"])
-        
-        with tab_f:
-            for txt in df_filtrado["fortalezas"].dropna():
-                if txt.strip():
-                    st.info(f"💬 \"{txt}\"")
+            st.subheader("eNPS - Recomendação (Questão 25)")
+            notas_enps = df_filtrado["enps"].tolist()
+            if notas_enps:
+                tot_enps = len(notas_enps)
+                promotores = sum(1 for n in notas_enps if n >= 9)
+                detretores = sum(1 for n in notas_enps if n <= 6)
+                enps_score = round(((promotores - detretores) / tot_enps) * 100, 1)
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("eNPS Score", f"{enps_score}")
+                c2.metric("Promotores (9-10)", f"{promotores} ({round(promotores/tot_enps*100)}%)")
+                c3.metric("Detretores (0-6)", f"{detretores} ({round(detretores/tot_enps*100)}%)")
 
-        with tab_m:
-            for txt in df_filtrado["melhorias"].dropna():
-                if txt.strip():
-                    st.warning(f"💬 \"{txt}\"")
+            st.divider()
 
-        with tab_c:
-            for txt in df_filtrado["comentarios_gerais"].dropna():
-                if txt.strip():
-                    st.write(f"💬 \"{txt}\"")
+            st.subheader("Plano de Carreira (Questão 26)")
+            st.bar_chart(df_filtrado["tempo_carreira"].value_counts())
+
+            st.divider()
+
+            st.subheader("Análise Qualitativa (Questões 27 a 29)")
+            tab_f, tab_m, tab_c = st.tabs(["27. Fortalezas", "28. Oportunidades de Melhoria", "29. Comentários Gerais"])
+            
+            with tab_f:
+                for txt in df_filtrado["fortalezas"].dropna():
+                    if txt.strip():
+                        st.info(f"💬 \"{txt}\"")
+
+            with tab_m:
+                for txt in df_filtrado["melhorias"].dropna():
+                    if txt.strip():
+                        st.warning(f"💬 \"{txt}\"")
+
+            with tab_c:
+                for txt in df_filtrado["comentarios_gerais"].dropna():
+                    if txt.strip():
+                        st.write(f"💬 \"{txt}\"")
